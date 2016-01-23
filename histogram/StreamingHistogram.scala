@@ -10,6 +10,7 @@ class StreamingHistogram(m: Int) {
   private val buckets = Array.ofDim[EntryType](m+1)
   private val cmp = new IndexCompare
   private var occupancy = 0
+  private var empty = m
 
   private class IndexCompare extends Comparator[EntryType] {
     def compare(left: EntryType, right: EntryType): Int = {
@@ -25,7 +26,7 @@ class StreamingHistogram(m: Int) {
   /**
    * Return a copy of the buckets.al
    */
-  def getBuckets(): List[EntryType] = buckets.take(m).toList
+  def getBuckets(): List[EntryType] = buckets.filter(_._2 > 0).take(m).toList
 
   /**
    * Compute the merged bucket of two given buckets.
@@ -53,7 +54,7 @@ class StreamingHistogram(m: Int) {
       var index = -1
 
       /* Update the permutation pi for this iteration */
-      buckets(m) = entry
+      buckets(empty) = entry
       Arrays.sort(buckets, cmp)
 
       /* Find where merger should take place */
@@ -69,8 +70,8 @@ class StreamingHistogram(m: Int) {
       /* Merge at appropriate place, clear entry that it merged with, and
        * compactify array. */
       buckets(index+0) = merge(index, index+1)
-      buckets(index+1) = (Double.PositiveInfinity, -1)
-      Arrays.sort(buckets, cmp)
+      buckets(index+1) = (0, -1)
+      empty = index+1
     }
 
   }
