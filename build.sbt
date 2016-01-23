@@ -11,6 +11,7 @@ lazy val histogram = (project in file("histogram")).
   )
 
 lazy val main = (project in file("main")).
+  dependsOn(histogram).
   settings(commonSettings: _*).
   settings(
     name := "main"
