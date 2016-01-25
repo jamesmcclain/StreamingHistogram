@@ -2,78 +2,120 @@ package com.daystrom_data_concepts
 
 import java.util.Arrays
 import java.util.Comparator
+import scala.collection.mutable.TreeSet
 
 
 class StreamingHistogram(m: Int) {
-  private type EntryType = (Double, Int)
+  private type BucketType = (Double, Int)
+  private type DeltaType = (Double, BucketType, BucketType)
 
-  private val buckets = Array.ofDim[EntryType](m+1)
-  private val cmp = new IndexCompare
-  private var occupancy = 0
-  private var empty = m
+  private val buckets = TreeSet.empty[BucketType]
+  private val deltas = TreeSet.empty[DeltaType]
 
-  private class IndexCompare extends Comparator[EntryType] {
-    def compare(left: EntryType, right: EntryType): Int = {
-      val leftValue = left._1
-      val rightValue = right._1
+  def getBuckets(): List[BucketType] = buckets.toList
 
-      if (leftValue < rightValue) -1
-      else if (leftValue > rightValue) 1
-      else 0
+  def getDeltas(): List[DeltaType] = deltas.toList
+
+  /**
+   * Take two buckets and return their composite.
+   */
+  private def merge(left: BucketType, right: BucketType): BucketType = {
+    val (value1, count1) = left
+    val (value2, count2) = right
+    ((value1*count1 + value2*count2)/(count1 + count2), (count1 + count2))
+  }
+
+  /**
+   * Merge the two closest-together buckets.
+   *
+   * Before: left ----- middle1 ----- middle2 ----- right
+   *
+   * After: left ------------- middle ------------- right
+   */
+  private def merge(): Unit = {
+    val delta = deltas.head
+    val (_, middle1, middle2) = delta
+    val middle = merge(middle1, middle2)
+    val left = {
+      val until = buckets.until(middle1)
+      if (until.isEmpty) None; else until.lastOption
     }
+    val right = {
+      val from = buckets.from(middle2)
+      if (from.isEmpty) None; else from.tail.headOption
+    }
+
+    /* remove delta between middle1 and middle2 */
+    deltas.remove(delta)
+
+    /* Replace delta to the left the merged buckets */
+    if (left != None) {
+      val other = left.get
+      val oldDelta = middle1._1 - other._1
+      val newDelta = middle._1 - other._1
+      deltas.remove(oldDelta, other, middle1)
+      deltas.add(newDelta, other, middle)
+    }
+
+    /* Replace delta to the right the merged buckets */
+    if (right != None) {
+      val other = right.get
+      val oldDelta = other._1 - middle2._1
+      val newDelta = other._1 - middle._1
+      deltas.remove(oldDelta, middle2, other)
+      deltas.add(newDelta, middle, other)
+    }
+
+    /* Replace merged buckets with their average */
+    buckets.remove(middle1)
+    buckets.remove(middle2)
+    buckets.add(middle)
   }
 
   /**
-   * Return a copy of the buckets.al
-   */
-  def getBuckets(): List[EntryType] = buckets.filter(_._2 > 0).take(m).toList
-
-  /**
-   * Compute the merged bucket of two given buckets.
-   */
-  private def merge(i: Int, j: Int): EntryType = {
-    val (q1, k1) = buckets(i)
-    val (q2, k2) = buckets(j)
-
-    ((q1*k1 + q2*k2)/(k1 + k2) , (k1 + k2))
-  }
-
-  /**
-   * Update
+   * Add a datum.
    */
   def update(d: Double): Unit = {
-    val entry = (d,1)
+    val newBucket = (d, 1)
+    val smaller = buckets.to(newBucket).lastOption
+    val larger = buckets.from(newBucket).headOption
 
-    if (occupancy < m) {
-      buckets(occupancy) = entry
-      occupancy += 1
+    /* First entry */
+    if (smaller == None && larger == None) {
+      buckets.add(newBucket)
     }
-    else if (occupancy >= m) {
-      var i = 0
-      var smallest = Double.PositiveInfinity
-      var index = -1
-
-      /* Update the permutation pi for this iteration */
-      buckets(empty) = entry
-      Arrays.sort(buckets, cmp)
-
-      /* Find where merger should take place */
-      while (i < m-1) {
-        val gap = buckets(i+1)._1 - buckets(i)._1
-        if (gap < smallest) {
-          smallest = gap
-          index = i
-        }
-        i += 1
+    /* Duplicate entry */
+    else if (larger != None && larger.get._1 == d) {
+      val large = larger.get
+      buckets.remove(large)
+      buckets.add((d, large._2+1))
+    }
+    /* Create new entry */
+    else {
+      /* Remove delta containing new bucket */
+      if (smaller != None && larger != None) {
+        val large = larger.get
+        val small = smaller.get
+        val delta = large._1 - small._1
+        deltas.remove((delta, small, large))
       }
 
-      /* Merge at appropriate place, clear entry that it merged with, and
-       * compactify array. */
-      buckets(index+0) = merge(index, index+1)
-      buckets(index+1) = (0, -1)
-      empty = index+1
+      /* Add delta between new bucket and next-largest bucket */
+      if (larger != None) {
+        val large = larger.get
+        val delta = large._1 - d
+        deltas.add(delta, newBucket, large)
+      }
+
+      /* Add delta between new bucket and next-smallest bucket */
+      if (smaller != None) {
+        val small = smaller.get
+        val delta = d - small._1
+        deltas.add(delta, small, newBucket)
+      }
+
+      buckets.add(newBucket)
+      if (buckets.size > m) merge
     }
-
   }
-
 }
