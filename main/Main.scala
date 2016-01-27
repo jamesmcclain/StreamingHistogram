@@ -3,7 +3,7 @@ package com.daystrom_data_concepts
 import scala.util.Random
 
 object Main {
-  val limit = 1000000
+  val limit = 10000000
   val size = 80
   val r = Random
   val rs1 = Array.ofDim[Double](limit)
@@ -20,10 +20,12 @@ object Main {
       i += 1
     }
 
-    sh1.update(rs1)
-    sh2.update(rs2)
+    sh1.countItems(rs1)
+    sh2.countItems(rs2)
     val sh3 = sh1 + sh2
-    println(s"quantiles = ${sh3.getQuantiles(10)}")
-    println(s"75th percentile = ${sh3.getQuantile(0.75)}")
+    println(s"Some quantiles = ${sh3.getQuantileBreaks(10)}")
+    println(s"mode=${sh3.getMode} median=${sh3.getMedian} mean=${sh3.getMean}")
+    println(s"${sh3.getPercentile(0.75)} is bigger than 75 percent of items")
+    println(s"0.0 is bigger than ${100*sh3.getPercentileRanking(0.0)} percent of items")
   }
 }
