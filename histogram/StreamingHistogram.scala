@@ -175,6 +175,7 @@ class StreamingHistogram(
   def rawValues(): Array[Double] = ???
   def foreach(f: (Double, Int) => Unit): Unit = ???
   def foreachValue(f: Int => Unit): Unit = ???
+  def getItemCount(item: Double): Int = ???
 
   /**
     * Unimplemented.
@@ -226,17 +227,6 @@ class StreamingHistogram(
   }
 
   /**
-    * Get the (approximate) percentile of this item.
-    */
-  def getPercentileRanking(item: Double): Double = ???
-
-  /**
-    * The (approximate) number of occurrences of the item in the
-    * distribution.
-    */
-  def getItemCount(item: Double): Int = ???
-
-  /**
     * Total number of samples used to build this histogram.
     */
   def getTotalCount(): Int = n
@@ -264,14 +254,43 @@ class StreamingHistogram(
   def getMinMaxValues(): (Double, Double) = (getMinValue, getMaxValue)
 
   /**
+    * This returns a tuple of tuples, where the inner tuples contain a
+    * bucket label and its percentile.
+    */
+  private def getCdfIntervals(): Iterator[((Double, Double), (Double, Double))] = {
+    val scalaBuckets = buckets.asScala
+    val ds = scalaBuckets.map(_._1)
+    val pdf = scalaBuckets.map(_._2.toDouble / n)
+    val cdf = pdf.scanLeft(0.0)(_ + _).drop(1)
+    val data = ds.zip(cdf).sliding(2)
+    data.map({ ab => (ab.head, ab.tail.head) })
+  }
+
+  /**
+    * Get the (approximate) percentile of this item.
+    */
+  def getPercentileRanking(item: Double): Double = {
+    val data = getCdfIntervals
+    val tt = data.dropWhile(_._2._1 <= item).next
+    val (d1, pct1) = tt._1
+    val (d2, pct2) = tt._2
+    val x = (item - d1) / (item - d2)
+    ((x*pct2) + (1-x)*pct1)
+  }
+
+  /**
     * For each q in qs, all between 0 and 1, find a number
     * (approximately) at the qth percentile.
     */
   def getPercentileBreaks(qs: Seq[Double]): Seq[Double] = {
-    val bucketList = buckets.asScala
-    val data = bucketList.map(_._1)
-    val cdf = bucketList.map(_._2.toDouble / n).scanLeft(0.0)(_ + _).drop(1)
-    qs.map({ q => data.zip(cdf).dropWhile(_._2 < q).head._1 })
+    val data = getCdfIntervals
+    qs.map({ q =>
+      val tt = data.dropWhile(_._2._2 <= q).next
+      val (d1, pct1) = tt._1
+      val (d2, pct2) = tt._2
+      val x = (q - pct1) / (pct2 - pct1)
+      ((x*d2) + (1-x)*d1)
+    })
   }
 
   def getPercentile(q: Double): Double =
