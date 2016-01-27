@@ -17,10 +17,10 @@ object StreamingHistogram {
 }
 
 /**
- * Ben-Haim, Yael, and Elad Tom-Tov. "A streaming parallel decision
- * tree algorithm."  The Journal of Machine Learning Research 11
- * (2010): 849-872.
- */
+  * Ben-Haim, Yael, and Elad Tom-Tov. "A streaming parallel decision
+  * tree algorithm."  The Journal of Machine Learning Research 11
+  * (2010): 849-872.
+  */
 class StreamingHistogram(
   m: Int,
   startingBuckets: Option[TreeMap[Double, Int]],
@@ -42,11 +42,11 @@ class StreamingHistogram(
   private val deltas = startingDeltas.getOrElse(new TreeMap[DeltaType, Unit](new DeltaCompare))
 
   /* The number of samples represented by this histogram */
-  var n = getBuckets.map(_._2).sum
+  var n = buckets.asScala.map(_._2).sum
 
   /**
-   * Take two buckets and return their composite.
-   */
+    * Take two buckets and return their composite.
+    */
   private def merge(left: BucketType, right: BucketType): BucketType = {
     val (value1, count1) = left
     val (value2, count2) = right
@@ -54,17 +54,17 @@ class StreamingHistogram(
   }
 
   /**
-   * Merge the two closest-together buckets.
-   *
-   * Before: left ----- middle1 ----- middle2 ----- right
-   *
-   * After: left ------------- middle ------------- right
-   *
-   * This function appropriately modifies both the buckets and the
-   * deltas.  The deltas on either side of the collapsed pair are
-   * removed and replaced with deltas meed the mid-point and
-   * respective extremes.
-   */
+    * Merge the two closest-together buckets.
+    *
+    * Before: left ----- middle1 ----- middle2 ----- right
+    *
+    * After: left ------------- middle ------------- right
+    *
+    * This function appropriately modifies both the buckets and the
+    * deltas.  The deltas on either side of the collapsed pair are
+    * removed and replaced with deltas meed the mid-point and
+    * respective extremes.
+    */
   private def merge(): Unit = {
     val delta = deltas.firstKey
     val (_, middle1, middle2) = delta
@@ -106,11 +106,11 @@ class StreamingHistogram(
   }
 
   /**
-   * Add a bucket to this histogram.  This can be used to add a new
-   * sample to the histogram by letting the bucket-count be equal to
-   * one, or it can be used to incrementally merge two histograms.
-   */
-  def update(b: BucketType): Unit = {
+    * Add a bucket to this histogram.  This can be used to add a new
+    * sample to the histogram by letting the bucket-count be equal to
+    * one, or it can be used to incrementally merge two histograms.
+    */
+  private def countItem(b: BucketType): Unit = {
     /* First entry */
     if (buckets.size == 0)
       buckets.put(b._1, b._2)
@@ -157,35 +157,128 @@ class StreamingHistogram(
   }
 
   /**
-   * Additional update overloads.
-   */
-  def update(d: Double): Unit = update((d, 1))
-  def update(bs: Seq[BucketType]): Unit = bs.foreach({ b => update(b) })
-  def update(ds: Seq[Double])(implicit dummy: DummyImplicit): Unit = ds.foreach({ d => update((d, 1)) })
+    * Additional countItem(|s) methods.
+    */
+  def countItem(item: Double, count: Int = 1): Unit =
+    countItem((item, count))
+  def countItems(items: Seq[BucketType]): Unit =
+    items.foreach({ item => countItem(item) })
+  def countItems(items: Seq[Double])(implicit dummy: DummyImplicit): Unit =
+    items.foreach({ item => countItem((item, 1)) })
 
   /**
-   * Combine operator.
-   */
+    * Unimplementable in principle.
+    */
+  def uncountItem(item: Double): Unit = ???
+  def setItem(item: Double, count: Int): Unit = ???
+  def getValues(): Array[Double] = ???
+  def rawValues(): Array[Double] = ???
+  def foreach(f: (Double, Int) => Unit): Unit = ???
+  def foreachValue(f: Int => Unit): Unit = ???
+
+  /**
+    * Unimplemented.
+    */
+  def generateStatistics() = ???
+
+  /**
+    * Update this histogram with the entries from another.
+    */
+  def update(other: StreamingHistogram): Unit =
+    this.countItems(other.getBuckets)
+
+  /**
+    * Combine operator: create a new histogram from this one and
+    * another without altering either.
+    */
   def +(other: StreamingHistogram): StreamingHistogram = {
     val sh = StreamingHistogram(this.m, this.buckets, this.deltas)
-    sh.update(other.getBuckets)
+    sh.countItems(other.getBuckets)
     sh
   }
 
   /**
-   * For each q in qs, between 0 and 1, find a number (approximately)
-   * at the qth percentile.
-   */
-  def getQuantiles(qs: Seq[Double]): Seq[Double] = {
-    val bucketList = getBuckets
-    val data = bucketList.map(_._1)
-    val pdf = bucketList.map(_._2.toDouble / n).scanLeft(0.0)(_ + _).drop(1)
-    qs.map({ q => data.zip(pdf).dropWhile(_._2 < q).head._1 })
+    * Return the approximate mode of the distribution.  This is done
+    * by simply returning the most populous bucket (so this answer
+    * could be really bad).
+    */
+  def getMode(): Double = {
+    buckets.asScala.reduce({ (l,r) =>
+      if (l._2 > r._2) l; else r
+    })._1
   }
 
-  def getQuantiles(k: Int): Seq[Double] = getQuantiles(List.range(0,k).map(_ / k.toDouble))
+  /**
+    * Median.
+    */
+  def getMedian(): Double = getPercentile(0.50)
 
-  def getQuantile(q: Double): Double = getQuantiles(List(q)).head
+  /**
+    *  Mean.
+    */
+  def getMean(): Double = {
+    val weightedSum =
+      buckets
+        .asScala.foldLeft(0.0)({ (acc,bucket) =>
+          acc + (bucket._1 * bucket._2)
+        })
+    weightedSum / getTotalCount
+  }
+
+  /**
+    * Get the (approximate) percentile of this item.
+    */
+  def getPercentileRanking(item: Double): Double = ???
+
+  /**
+    * The (approximate) number of occurrences of the item in the
+    * distribution.
+    */
+  def getItemCount(item: Double): Int = ???
+
+  /**
+    * Total number of samples used to build this histogram.
+    */
+  def getTotalCount(): Int = n
+
+  /**
+    * Get the (approximate) min value.  This is only approximate
+    * because the lowest bucket may be a composite one.
+    */
+  def getMinValue(): Double = {
+    val entry = buckets.higherEntry(Double.NegativeInfinity)
+    if (entry != null) entry.getKey; else Double.NaN
+  }
+
+  /**
+    * Get the (approximate) max value.
+    */
+  def getMaxValue(): Double = {
+    val entry = buckets.lowerEntry(Double.PositiveInfinity)
+    if (entry != null) entry.getKey; else Double.NaN
+  }
+
+  /**
+    * Report the minimum and maximum values found in the distribution.
+    */
+  def getMinMaxValues(): (Double, Double) = (getMinValue, getMaxValue)
+
+  /**
+    * For each q in qs, all between 0 and 1, find a number
+    * (approximately) at the qth percentile.
+    */
+  def getPercentileBreaks(qs: Seq[Double]): Seq[Double] = {
+    val bucketList = buckets.asScala
+    val data = bucketList.map(_._1)
+    val cdf = bucketList.map(_._2.toDouble / n).scanLeft(0.0)(_ + _).drop(1)
+    qs.map({ q => data.zip(cdf).dropWhile(_._2 < q).head._1 })
+  }
+
+  def getPercentile(q: Double): Double =
+    getPercentileBreaks(List(q)).head
+
+  def getQuantileBreaks(num: Int): Seq[Double] =
+    getPercentileBreaks(List.range(0,num).map(_ / num.toDouble))
 
   def getBuckets(): List[BucketType] = buckets.asScala.toList
 
