@@ -26,6 +26,7 @@ class StreamingHistogram(
   startingBuckets: Option[TreeMap[Double, Int]],
   startingDeltas: Option[TreeMap[DeltaType, Unit]]
 ) {
+
   class DeltaCompare extends Comparator[DeltaType] {
     def compare(a: DeltaType, b: DeltaType): Int =
       if (a._1 < b._1) -1
@@ -39,6 +40,9 @@ class StreamingHistogram(
 
   private val buckets = startingBuckets.getOrElse(new TreeMap[Double, Int])
   private val deltas = startingDeltas.getOrElse(new TreeMap[DeltaType, Unit](new DeltaCompare))
+
+  /* The number of samples represented by this histogram */
+  var n = getBuckets.map(_._2).sum
 
   /**
    * Take two buckets and return their composite.
@@ -101,6 +105,11 @@ class StreamingHistogram(
     buckets.put(middle._1, middle._2)
   }
 
+  /**
+   * Add a bucket to this histogram.  This can be used to add a new
+   * sample to the histogram by letting the bucket-count be equal to
+   * one, or it can be used to incrementally merge two histograms.
+   */
   def update(b: BucketType): Unit = {
     /* First entry */
     if (buckets.size == 0)
@@ -142,9 +151,17 @@ class StreamingHistogram(
       }
     }
 
+    n += b._2
     buckets.put(b._1, b._2)
     if (buckets.size > m) merge
   }
+
+  /**
+   * Additional update overloads.
+   */
+  def update(d: Double): Unit = update((d, 1))
+  def update(bs: Seq[BucketType]): Unit = bs.foreach({ b => update(b) })
+  def update(ds: Seq[Double])(implicit dummy: DummyImplicit): Unit = ds.foreach({ d => update((d, 1)) })
 
   /**
    * Combine operator.
@@ -155,17 +172,20 @@ class StreamingHistogram(
     sh
   }
 
-  def getQuantile(q: Double): Double = 33
+  /**
+   * For each q in qs, between 0 and 1, find a number (approximately)
+   * at the qth percentile.
+   */
+  def getQuantiles(qs: Seq[Double]): Seq[Double] = {
+    val bucketList = getBuckets
+    val data = bucketList.map(_._1)
+    val pdf = bucketList.map(_._2.toDouble / n).scanLeft(0.0)(_ + _).drop(1)
+    qs.map({ q => data.zip(pdf).dropWhile(_._2 < q).head._1 })
+  }
 
-  def getQuantiles(k: Int) = List.range(0,k).map(_ / k.toDouble).map(getQuantile)
+  def getQuantiles(k: Int): Seq[Double] = getQuantiles(List.range(0,k).map(_ / k.toDouble))
 
-  def update(d: Double): Unit = update((d, 1))
-
-  def update(bs: Seq[BucketType]): Unit =
-    bs.foreach({ b => update(b) })
-
-  def update(ds: Seq[Double])(implicit dummy: DummyImplicit): Unit =
-    ds.foreach({ d => update((d, 1)) })
+  def getQuantile(q: Double): Double = getQuantiles(List(q)).head
 
   def getBuckets(): List[BucketType] = buckets.asScala.toList
 
