@@ -174,7 +174,7 @@ class StreamingHistogram(
   def getValues(): Array[Double] = ???
   def rawValues(): Array[Double] = ???
   def foreach(f: (Double, Int) => Unit): Unit = ???
-  def foreachValue(f: Int => Unit): Unit = ???
+  def foreachValue(f: Double => Unit): Unit = ???
   def getItemCount(item: Double): Int = ???
 
   /**
@@ -187,6 +187,9 @@ class StreamingHistogram(
     */
   def update(other: StreamingHistogram): Unit =
     this.countItems(other.getBuckets)
+
+  def mutable(): StreamingHistogram =
+    StreamingHistogram(this.m, this.buckets, this.deltas)
 
   /**
     * Combine operator: create a new histogram from this one and
@@ -296,8 +299,8 @@ class StreamingHistogram(
   def getPercentile(q: Double): Double =
     getPercentileBreaks(List(q)).head
 
-  def getQuantileBreaks(num: Int): Seq[Double] =
-    getPercentileBreaks(List.range(0,num).map(_ / num.toDouble))
+  def getQuantileBreaks(num: Int): Array[Double] =
+    getPercentileBreaks(List.range(0,num).map(_ / num.toDouble)).toArray
 
   def getBuckets(): List[BucketType] = buckets.asScala.toList
 
