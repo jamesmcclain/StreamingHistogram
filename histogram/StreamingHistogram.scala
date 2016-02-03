@@ -28,8 +28,6 @@ class StreamingHistogram(
   startingDeltas: Option[TreeMap[DeltaType, Unit]]
 ) {
 
-  var area = 0.0
-
   class DeltaCompare extends Comparator[DeltaType] {
     def compare(a: DeltaType, b: DeltaType): Int =
       if (a._1 < b._1) -1
@@ -102,7 +100,6 @@ class StreamingHistogram(
 
     /* remove delta between middle1 and middle2 */
     deltas.remove(delta)
-    area -= computeArea(middle1, middle2)
 
     /* Replace delta to the left of the merged buckets */
     if (left != None) {
@@ -111,8 +108,6 @@ class StreamingHistogram(
       val newDelta = middle._1 - other._1
       deltas.remove((oldDelta, other, middle1))
       deltas.put((newDelta, other, middle), Unit)
-      area -= computeArea(other, middle1)
-      area += computeArea(other, middle)
     }
 
     /* Replace delta to the right of the merged buckets */
@@ -122,8 +117,6 @@ class StreamingHistogram(
       val newDelta = other._1 - middle._1
       deltas.remove((oldDelta, middle2, other))
       deltas.put((newDelta, middle, other), Unit)
-      area -= computeArea(middle2, other)
-      area += computeArea(middle, other)
     }
 
     /* Replace merged buckets with their average */
@@ -163,7 +156,6 @@ class StreamingHistogram(
         val small = smaller.get
         val delta = large._1 - small._1
         deltas.remove((delta, small, large))
-        area -= computeArea(small, large)
       }
 
       /* Add delta between new bucket and next-largest bucket */
@@ -171,7 +163,6 @@ class StreamingHistogram(
         val large = larger.get
         val delta = large._1 - b._1
         deltas.put((delta, b, large), Unit)
-        area += computeArea(b, large)
       }
 
       /* Add delta between new bucket and next-smallest bucket */
@@ -179,7 +170,6 @@ class StreamingHistogram(
         val small = smaller.get
         val delta = b._1 - small._1
         deltas.put((delta, small, b), Unit)
-        area += computeArea(small, b)
       }
     }
 
@@ -313,7 +303,12 @@ class StreamingHistogram(
   /**
     * Return the area under the curve.
     */
-  private def getAreaUnderCurve(): Double = area
+  def getAreaUnderCurve(): Double = {
+    getBuckets
+      .sliding(2)
+      .map({ case List(x,y) => computeArea(x,y) })
+      .sum
+  }
 
   /**
     * Total number of samples used to build this histogram.
