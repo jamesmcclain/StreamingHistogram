@@ -27,6 +27,6 @@ object Main {
     println(s"mode=${sh3.getMode} median=${sh3.getMedian} mean=${sh3.getMean}")
     println(s"${sh3.getPercentile(0.75)} is bigger than 75 percent of items")
     println(s"0.0 is bigger than ${100*sh3.getPercentileRanking(0.0)} percent of items")
-    println(s"Approximate number of items equal to 0.0 = ${sh3.getItemCount(0.0)}")
+    println(s"Approximate number of items equal to 0.0 is ${sh3.getItemCount(0.0)}")
   }
 }
