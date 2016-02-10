@@ -259,7 +259,7 @@ class StreamingHistogram(
     val zmin = getMinValue
     val zmax = getMaxValue
 
-    Statistics[Double](dataCount, mean, median, mode, stddev, zmin, zmax)
+    (dataCount, mean, median, mode, stddev, zmin, zmax)
   }
 
   /**
